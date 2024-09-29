@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Input, InputNumber, List, Modal, Select, Space, Typography, message } from 'antd';
+import {Button, Input, InputNumber, List, Modal, Select, Space, Typography, message, Checkbox} from 'antd';
 import { v4 as uuidv4 } from 'uuid';
 import { Action } from './models/action';
 import { ACTIONS_KEY } from './utils/localStorageKeys';
@@ -37,13 +37,15 @@ const ActionsPage: React.FC = () => {
     const [modifier, setModifier] = useState<number>(0);
     const [statKey, setStatKey] = useState<StatKey>('Сила');
     const [cooldown, setCooldown] = useState<number | null>(null);
+    const [hitModifier, setHitModifier] = useState<number>(0);
+    const [requiresTarget, setRequiresTarget] = useState<boolean>(true);
 
     useEffect(() => {
         const storedActions = localStorage.getItem(ACTIONS_KEY);
         if (storedActions) {
             setActions(
                 (JSON.parse(storedActions) as Action[]).map(
-                    (x) => new Action(x.id, x.name, x.diceCount, x.diceSides, x.modifier, x.statKey, x.cooldown)
+                    (x) => new Action(x.id, x.name, x.diceCount, x.diceSides, x.modifier, x.statKey, x.cooldown, x.hitModifier, x.requiresTarget)
                 )
             );
         }
@@ -79,7 +81,9 @@ const ActionsPage: React.FC = () => {
             action.diceSides,
             action.modifier,
             action.statKey,
-            action.cooldown
+            action.cooldown,
+            action.hitModifier,
+            action.requiresTarget,
         );
         addAction(duplicated);
         editAction(duplicated);
@@ -87,10 +91,10 @@ const ActionsPage: React.FC = () => {
 
     const handleModalOk = () => {
         if (editingActionId) {
-            const updatedAction = new Action(editingActionId, name, diceCount, diceSides, modifier, statKey, cooldown);
+            const updatedAction = new Action(editingActionId, name, diceCount, diceSides, modifier, statKey, cooldown, hitModifier, requiresTarget);
             updateAction(updatedAction);
         } else {
-            const newAction = new Action(uuidv4(), name, diceCount, diceSides, modifier, statKey, cooldown);
+            const newAction = new Action(uuidv4(), name, diceCount, diceSides, modifier, statKey, cooldown, hitModifier, requiresTarget);
             addAction(newAction);
         }
         handleModalCancel();
@@ -109,6 +113,8 @@ const ActionsPage: React.FC = () => {
         setStatKey('Сила');
         setEditingActionId(null);
         setCooldown(null);
+        setHitModifier(0);
+        setRequiresTarget(true);
     };
 
     const showAddModal = () => {
@@ -124,6 +130,8 @@ const ActionsPage: React.FC = () => {
         setModifier(action.modifier);
         setStatKey(action.statKey);
         setCooldown(action.cooldown)
+        setHitModifier(action.hitModifier);
+        setRequiresTarget(action.requiresTarget);
         setIsModalVisible(true);
     };
 
@@ -142,7 +150,7 @@ const ActionsPage: React.FC = () => {
             const parsedData = JSON.parse(importData);
             if (Array.isArray(parsedData)) {
                 localStorage.setItem(ACTIONS_KEY, importData);
-                setActions(parsedData.map((x) => new Action(x.id, x.name, x.diceCount, x.diceSides, x.modifier, x.statKey, x.cooldown)));
+                setActions(parsedData.map((x) => new Action(x.id, x.name, x.diceCount, x.diceSides, x.modifier, x.statKey, x.cooldown, x.hitModifier, x.requiresTarget)));
                 message.success('Данные успешно импортированы');
             } else {
                 message.error('Неправильный формат данных');
@@ -209,12 +217,20 @@ const ActionsPage: React.FC = () => {
                     <Select style={{ width: 150 }} options={stats} value={statKey} onChange={(x) => setStatKey(x)} />
                 </div>
                 <div>
-                    <Typography.Title level={5}>Дополнительный модификатор</Typography.Title>
+                    <Typography.Title level={5}>Дополнительный модификатор урона</Typography.Title>
                     <InputNumber value={modifier} onChange={(x) => setModifier(x || 0)} />
                 </div>
                 <div>
-                    <Typography.Title level={5}>Время отката</Typography.Title>
+                    <Typography.Title level={5}>Время отката (оставить пустым если нет)</Typography.Title>
                     <InputNumber value={cooldown} onChange={(x) => setCooldown(x)} />
+                </div>
+                <div>
+                    <Typography.Title level={5}>Дополнительный модификатор попадания</Typography.Title>
+                    <InputNumber value={hitModifier} onChange={(x) => setHitModifier(x || 0)} />
+                </div>
+                <div>
+                    <Typography.Title level={5}>Направлен на игрока</Typography.Title>
+                    <Checkbox checked={requiresTarget} onChange={(e) => setRequiresTarget(e.target.checked)} />
                 </div>
             </Modal>
 

@@ -5,6 +5,7 @@ import {ACTIONS_KEY, MONSTERS_KEY, PLAYERS_KEY} from "./utils/localStorageKeys";
 import {Action} from "./models/action";
 import { v4 as uuidv4 } from 'uuid';
 import {Player} from "./models/player"; // Импортируем uuid для генерации уникальных ID
+import {loadCombatState, saveCombatState } from './utils/indexDB';
 
 const { Column } = Table;
 
@@ -28,18 +29,23 @@ const CombatScreen: React.FC = () => {
     const [combatCharacters, setCombatCharacters] = useState<CombatCharacter[]>([]);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [isModalPlayerVisible, setIsModalPlayerVisible] = useState(false);
+    const [isTargetSelectionVisible, setIsTargetSelectionVisible] = useState(false);
     const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
     const [actions, setActions] = useState<Record<string, Action>>({});
     const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(null); // Индекс текущего хода
     const [currentTurn, setCurrentTurn] = useState<number>(0);
     const [log, setLog] = useState<string[]>([]); // Лог действий
+    const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
+    const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const storedActions = localStorage.getItem(ACTIONS_KEY);
         if (storedActions) {
             const loadedActions: Action[] = JSON.parse(storedActions);
             const actionsMap = loadedActions.reduce((acc, action) => {
-                acc[action.id] = new Action(action.id, action.name, action.diceCount, action.diceSides, action.modifier, action.statKey);
+                acc[action.id] = new Action(action.id, action.name, action.diceCount, action.diceSides,
+                    action.modifier, action.statKey, action.cooldown, action.hitModifier, action.requiresTarget);
                 return acc;
             }, {} as Record<string, Action>);
             setActions(actionsMap);
@@ -50,6 +56,16 @@ const CombatScreen: React.FC = () => {
             const loadedPlayers: Player[] = JSON.parse(storedPlayers);
             setAllPlayers(loadedPlayers.map(x => new Player(x.id, x.name, x.armorClass)));
         }
+
+        loadCombatState().then(state => {
+            if (state) {
+                setCombatCharacters(state.combatCharacters);
+                setCurrentTurn(state.currentTurn);
+                setLog(state.log);
+                setCurrentCharacterId(state.currentCharacterId);
+            }
+            setIsLoading(false);
+        });
     }, []);
 
     useEffect(() => {
@@ -59,6 +75,17 @@ const CombatScreen: React.FC = () => {
             setAllCharacters(chars.map(x => new Monster(x.id, x.name, x.stats, x.actionIds.filter(a => Object.keys(actions).includes(a)))));
         }
     }, [actions]);
+
+    useEffect(() => {
+        if(!isLoading){
+            saveCombatState({
+                combatCharacters,
+                currentTurn,
+                log,
+                currentCharacterId,
+            });
+        }
+    }, [combatCharacters, currentTurn, log, currentCharacterId, isLoading]);
 
     const isActionAvailable = (action: Action, lastUsedTurn: number | undefined, currentTurn: number) => {
         return action.cooldown === null || lastUsedTurn === undefined || (currentTurn - lastUsedTurn > action.cooldown);
@@ -131,31 +158,80 @@ const CombatScreen: React.FC = () => {
     const handleActionClick = (actionId: string) => {
         if (activeCharacterId === currentCharacterId && currentTurn !== 0) {
             const action = actions[actionId];
-            const found1 = combatCharacters.find(x => x.character.id === currentCharacterId);
-            if(found1 && found1.character instanceof Monster){
-
-                const lastUsedTurn = found1.usedActions[actionId];
-
-                if (!isActionAvailable(action, lastUsedTurn, currentTurn)) {
-                    const remainingTurns = getRemainingTurns(action, currentTurn, lastUsedTurn);
-                    message.warning(`${action.name} ещё ${remainingTurns} ходов на кулдауне!`);
-                    return;
-                }
-
-                const char = found1.character;
-                setLog([...log, `${char.name} использовал ${action.name}: ${action.roll(char)}`]);
-                if(action.cooldown !== null){
-                    const updatedCharacters = [...combatCharacters];
-                    const found = updatedCharacters.find(x => x.character.id === activeCharacterId);
-                    if(found){
-                        found.usedActions = {...found.usedActions, actionId:currentTurn};
-                    }
-                    setCombatCharacters(updatedCharacters.sort((a, b) => b.initiative - a.initiative));
-
-                }
+            if (action.requiresTarget) {
+                setPendingActionId(actionId);
+                setIsTargetSelectionVisible(true); // Открываем окно выбора цели
+            } else {
+                executeAction(actionId);
             }
         } else {
             message.warning('Этот персонаж не может использовать способности сейчас!');
+        }
+    };
+
+    const executeAction = (actionId: string, playerId: string | null = null) => {
+        const action = actions[actionId];
+        const found1 = combatCharacters.find(x => x.character.id === currentCharacterId);
+        if(found1 && found1.character instanceof Monster){
+
+            const lastUsedTurn = found1.usedActions[actionId];
+
+            if (!isActionAvailable(action, lastUsedTurn, currentTurn)) {
+                const remainingTurns = getRemainingTurns(action, currentTurn, lastUsedTurn);
+                message.warning(`${action.name} ещё ${remainingTurns} ходов на кулдауне!`);
+                return;
+            }
+
+            const char = found1.character;
+            if(!playerId){
+                setLog([...log, `${char.name} использовал ${action.name}: ${action.roll(char)}`]);
+            }
+            else{
+                const foundPlayer = combatCharacters.find(x => x.character.id === playerId);
+                if(foundPlayer){
+                    const player = foundPlayer.character as Player;
+                    const hit = action.hit(found1.character);
+                    if(hit === "20"){
+                        const logs = [
+                            `${char.name} использовал ${action.name} на ${player.name} [Попадание]: (20) КРИТИЧЕСКИЙ УСПЕХ`,
+                            `${char.name} использовал ${action.name} на ${player.name} [Урон x2]: ${2 * action.roll(char)}`
+                        ]
+                        setLog([...log, ...logs]);
+                    }
+                    else if(hit === "1"){
+                        setLog([...log, `${char.name} использовал ${action.name} на ${player.name} [Попадание]: (1) КРИТИЧЕСКИЙ ПРОМАХ`]);
+                    }else{
+                        const hited = hit >= player.armorClass;
+                        const logs = [
+                            `${char.name} использовал ${action.name} на ${player.name} [Попадание]: ${hit} ${hited ? '' : '(МИМО)'}`,
+                        ]
+                        if(hited){
+                            logs.push(`${char.name} использовал ${action.name} на ${player.name} [Урон]: ${action.roll(char)}`)
+                        }
+                        setLog([...log, ...logs]);
+                    }
+                }
+            }
+            if(action.cooldown !== null){
+                const updatedCharacters = [...combatCharacters];
+                const found = updatedCharacters.find(x => x.character.id === activeCharacterId);
+                if(found){
+                    found.usedActions = {...found.usedActions, [actionId]:currentTurn};
+                }
+                console.log(updatedCharacters);
+                setCombatCharacters(updatedCharacters.sort((a, b) => b.initiative - a.initiative));
+
+            }
+        }
+    }
+
+    const handleTargetSelect = () => {
+        if (pendingActionId && selectedTargetId) {
+            // Действие совершается на выбранного игрока
+            executeAction(pendingActionId, selectedTargetId);
+            setIsTargetSelectionVisible(false);
+            setSelectedTargetId(null);
+            setPendingActionId(null);
         }
     };
 
@@ -372,6 +448,26 @@ const CombatScreen: React.FC = () => {
                     options={allPlayers.map(character => ({
                         label: character.name,
                         value: character.id,
+                    }))}
+                />
+            </Modal>
+
+            <Modal
+                title="Выберите цель"
+                visible={isTargetSelectionVisible}
+                onOk={handleTargetSelect}
+                onCancel={() => setIsTargetSelectionVisible(false)}
+            >
+                <Select
+                    style={{ width: '100%' }}
+                    placeholder="Выберите цель"
+                    value={selectedTargetId}
+                    onChange={setSelectedTargetId}
+                    options={combatCharacters
+                        .filter(x =>  x.character instanceof Player)
+                        .map(x => ({
+                        label: x.character.name,
+                        value: x.character.id,
                     }))}
                 />
             </Modal>

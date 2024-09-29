@@ -9,10 +9,11 @@ export class Action {
     statKey: StatKey;
     cooldown: number | null;
     hitModifier: number;
+    requiresTarget: boolean = false
 
 
     constructor(id: string, name: string, diceCount: number, diceSides: number,  modifier: number, statKey: StatKey,
-                cooldown: number | null = null, hitModifier: number = 0) {
+                cooldown: number | null = null, hitModifier: number = 0, requiresTarget = false) {
         this.id = id;
         this.name = name;
         this.diceCount = diceCount;
@@ -20,11 +21,11 @@ export class Action {
         this.modifier = modifier;
         this.statKey = statKey;
         this.hitModifier = hitModifier;
+        this.requiresTarget = requiresTarget;
         this.cooldown = cooldown;
     }
 
     toShowString() {
-        console.log(`${this.name} ${this.statKey}`);
         const modifierString = this.modifier > 0 ? ` + ${this.modifier}` : ""
         return `${this.name} : ${this.diceCount}d${this.diceSides} + ${this.statKey}${modifierString}`;
     }
