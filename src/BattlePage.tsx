@@ -59,7 +59,20 @@ const CombatScreen: React.FC = () => {
 
         loadCombatState().then(state => {
             if (state) {
-                setCombatCharacters(state.combatCharacters);
+                const loadedCombatCharacters = state.combatCharacters
+                    .map((x: CombatCharacter) => Object.keys(x.character).includes("stats") ?
+                        {
+                            character: new Monster(x.character.id, x.character.name, (x.character as Monster).stats, (x.character as Monster).actionIds),
+                            initiative: x.initiative,
+                            usedActions: x.usedActions,
+                        } :
+                        {
+                            character: new Player(x.character.id, x.character.name, (x.character as Player).armorClass),
+                            initiative: x.initiative,
+                            usedActions: x.usedActions,
+                        }
+                    );
+                setCombatCharacters(loadedCombatCharacters);
                 setCurrentTurn(state.currentTurn);
                 setLog(state.log);
                 setCurrentCharacterId(state.currentCharacterId);
@@ -126,7 +139,6 @@ const CombatScreen: React.FC = () => {
             initiative: 0,
             usedActions: {},
         }));
-        console.log([...combatCharacters, ...charactersWithInitiative].sort((a, b) => b.initiative - a.initiative));
         setCombatCharacters([...combatCharacters, ...charactersWithInitiative].sort((a, b) => b.initiative - a.initiative));
         handleCancelPlayer();
     };
@@ -218,7 +230,6 @@ const CombatScreen: React.FC = () => {
                 if(found){
                     found.usedActions = {...found.usedActions, [actionId]:currentTurn};
                 }
-                console.log(updatedCharacters);
                 setCombatCharacters(updatedCharacters.sort((a, b) => b.initiative - a.initiative));
 
             }
@@ -480,7 +491,7 @@ const CombatScreen: React.FC = () => {
                     value={selectedTargetId}
                     onChange={setSelectedTargetId}
                     options={combatCharacters
-                        .filter(x =>  x.character instanceof Player)
+                        .filter(x =>  !Object.keys(x.character).includes("stats"))
                         .map(x => ({
                         label: x.character.name,
                         value: x.character.id,
