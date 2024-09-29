@@ -1,26 +1,51 @@
-import React from 'react';
-import logo from './logo.svg';
+import React, {useState} from 'react';
 import './App.css';
+import {Layout, Menu} from "antd";
+import MonstersPage from "./MonstersPage";
+import ActionsPage from "./ActionsPage";
+import BattlePage from "./BattlePage";
+import PlayersPage from "./PlayersPage";
 
-function App() {
+const { Header, Content } = Layout;
+
+const App: React.FC = () => {
+  const [currentPage, setCurrentPage] = useState<string>('players');
+
+  const renderPage = () => {
+    switch (currentPage) {
+        case 'players':
+            return <PlayersPage />;
+        case 'monsters':
+            return <MonstersPage />;
+        case 'actions':
+            return <ActionsPage />;
+        case 'battle':
+            return <BattlePage />;
+      default:
+            return <MonstersPage />;
+    }
+  };
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+      <Layout>
+        <Header>
+          <Menu
+              theme="dark"
+              mode="horizontal"
+              selectedKeys={[currentPage]}
+              onClick={(e) => setCurrentPage(e.key)}
+          >
+              <Menu.Item key="players">Игроки</Menu.Item>
+              <Menu.Item key="actions">Способности</Menu.Item>
+              <Menu.Item key="monsters">Монстры</Menu.Item>
+              <Menu.Item key="battle">Битва</Menu.Item>
+          </Menu>
+        </Header>
+        <Content style={{ padding: '20px' }}>
+          {renderPage()}
+        </Content>
+      </Layout>
   );
-}
+};
 
 export default App;
