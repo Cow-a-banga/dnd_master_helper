@@ -324,9 +324,25 @@ const CombatScreen: React.FC = () => {
         setActiveCharacterId(null);
     };
 
+    const clearBattle = () => {
+        saveCombatState({
+            combatCharacters: [],
+            currentTurn: 0,
+            log: [],
+            currentCharacterId: null,
+        })
+            .then(x =>{
+                setCombatCharacters([]);
+                setCurrentTurn(0);
+                setLog([]);
+                setCurrentCharacterId(null);
+            });
+    }
+
     return (
         <div>
             <h1>Экран боя</h1>
+            <Button danger type="primary" onClick={clearBattle}>Очистить страницу</Button>
             <h2>Ход: {currentTurn}</h2>
             <div style={{ display: 'flex', gap: '20px' }}>
                 {/* Левая колонка: Список персонажей */}
